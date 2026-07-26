@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Foresight Live Prices ⚡</title>
+<style>
+  :root {
+    --bg:#0b0e14; --panel:#141924; --panel2:#1c2431; --line:#263041;
+    --txt:#e6edf3; --dim:#8b98a9; --up:#2ec26b; --down:#ff5470; --accent:#6ea8fe; --poly:#c792ff;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt); font:15px/1.4 -apple-system,"Segoe UI",Roboto,sans-serif; }
+  header { display:flex; align-items:center; gap:14px; padding:12px 18px; border-bottom:1px solid var(--line); position:sticky; top:0; background:var(--bg); z-index:5; flex-wrap:wrap; }
+  header h1 { font-size:17px; margin:0; }
+  .controls { display:flex; align-items:center; gap:10px; margin-left:auto; font-size:13px; color:var(--dim); }
+  .controls input { background:var(--panel2); border:1px solid var(--line); color:var(--txt); padding:7px 11px; border-radius:8px; font-size:14px; outline:none; width:220px; }
+  .controls input:focus { border-color:var(--accent); }
+  .chip { padding:5px 10px; border-radius:20px; border:1px solid var(--line); cursor:pointer; user-select:none; }
+  .chip.on { background:var(--accent); color:#06101f; border-color:var(--accent); font-weight:600; }
+  .status { display:flex; align-items:center; gap:7px; }
+  .dot { width:9px; height:9px; border-radius:50%; background:var(--down); }
+  .dot.live { background:var(--up); box-shadow:0 0 8px var(--up); }
+  main { display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:14px; padding:16px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px; }
+  .card .q { font-size:14px; font-weight:600; margin-bottom:3px; }
+  .card .meta { font-size:11px; color:var(--dim); margin-bottom:12px; display:flex; gap:8px; }
+  .badge { padding:1px 7px; border-radius:6px; background:var(--panel2); }
+  .outcome { display:flex; align-items:center; justify-content:space-between; padding:9px 11px; border-radius:10px; background:var(--panel2); margin-bottom:7px; }
+  .outcome .name { font-weight:600; font-size:14px; }
+  .prices { text-align:right; font-variant-numeric:tabular-nums; }
+  .prob { font-size:26px; font-weight:700; letter-spacing:-.5px; }
+  .polyline { font-size:12px; color:var(--poly); margin-top:2px; }
+  .diverge { font-weight:700; }
+  .flash-up { animation:fu .5s; } .flash-down { animation:fd .5s; }
+  @keyframes fu { 0%{background:rgba(46,194,107,.4);} 100%{background:var(--panel2);} }
+  @keyframes fd { 0%{background:rgba(255,84,112,.4);} 100%{background:var(--panel2);} }
+  .up { color:var(--up); } .down { color:var(--down); }
+  .empty { color:var(--dim); padding:50px 18px; text-align:center; grid-column:1/-1; }
+</style>
+</head>
+<body>
+<header>
+  <h1>⚡ Foresight Live</h1>
+  <div class="controls">
+    <input id="filter" placeholder="Filter markets…" autocomplete="off" />
+    <span class="chip on" data-chain="56">BSC</span>
+    <span class="chip on" data-chain="8453">Base</span>
+    <span class="status"><span class="dot" id="dot"></span><span id="statusText">loading…</span></span>
+  </div>
+</header>
+<main id="board"><div class="empty">Loading all open Foresight markets…</div></main>
+
+<script>
+const FS = 'https://api.foresight.now';
+const GAMMA = 'https://gamma-api.polymarket.com';
+const WS_URL = 'wss://ws-subscriptions-clob.polymarket.com/ws/market';
+const CHAINS = { 56:'BSC', 8453:'Base' };
+const enabledChains = new Set([56, 8453]);
+let filterText = '';
+
+const cards = new Map();       // condition_id -> { el, chainId, question, prevYes, polyYes }
+// Polymarket overlay
+const polyByCondition = new Map(); // condition_id -> { tokenIds, books }
+const assetToCondition = new Map();
+let ws = null, reconnectT = null;
+
+// ---- chain toggle + filter ----
+document.querySelectorAll('.chip').forEach(chip => chip.onclick = () => {
+  const c = Number(chip.dataset.chain);
+  if (enabledChains.has(c)) { enabledChains.delete(c); chip.classList.remove('on'); }
+  else { enabledChains.add(c); chip.classList.add('on'); }
+  refresh(true);
+});
+document.getElementById('filter').oninput = e => { filterText = e.target.value.trim().toLowerCase(); applyFilter(); };
+function applyFilter() {
+  for (const [id, c] of cards) c.el.style.display = c.question.toLowerCase().includes(filterText) ? '' : 'none';
+}
+
+function setStatus(live, text) {
+  document.getElementById('dot').className = 'dot' + (live ? ' live' : '');
+  document.getElementById('statusText').textContent = text;
+}
+
+// ---- Foresight polling (all markets, fast) ----
+let refreshing = false;
+async function refresh(rebuild = false) {
+  if (refreshing) return; // don't stack if a poll runs long (keeps it snappy)
+  refreshing = true;
+  try {
+    const lists = await Promise.all([...enabledChains].map(c =>
+      fetch(`${FS}/v1/markets?chain_id=${c}&status=open&limit=100`).then(r => r.json()).then(j => (j.data||[]).map(m => ({ ...m, _chain: c }))).catch(() => [])
+    ));
+    const markets = lists.flat();
+    setStatus(true, `live · ${markets.length} markets`);
+    const board = document.getElementById('board');
+    if (board.querySelector('.empty')) board.innerHTML = '';
+
+    const seen = new Set();
+    for (const m of markets) {
+      seen.add(m.condition_id);
+      renderMarket(m);
+    }
+    // remove markets that closed
+    for (const [id, c] of cards) if (!seen.has(id)) { c.el.remove(); cards.delete(id); }
+    applyFilter();
+    // (re)wire Polymarket overlay (sports + BTC/ETH/BNB) — runs in background
+    ensurePolyOverlay(markets);
+  } catch (e) {
+    setStatus(false, 'Foresight fetch failed — retrying');
+  } finally {
+    refreshing = false;
+  }
+}
+
+function renderMarket(m) {
+  const yes = m.ticker?.displayPriceYES;
+  const no = m.ticker?.displayPriceNO;
+  let c = cards.get(m.condition_id);
+  if (!c) {
+    const el = document.createElement('div');
+    el.className = 'card';
+    el.innerHTML = `<div class="q"></div>
+      <div class="meta"><span class="badge">${CHAINS[m._chain]}</span><span class="badge vol"></span></div>
+      <div class="outcome"><span class="name">YES</span><span class="prices"><div class="prob" data-yes>—</div><div class="polyline" data-polyyes></div></span></div>
+      <div class="outcome"><span class="name">NO</span><span class="prices"><div class="prob" data-no>—</div></span></div>`;
+    document.getElementById('board').appendChild(el);
+    c = { el, chainId: m._chain, question: m.question, prevYes: null, prevNo: null };
+    cards.set(m.condition_id, c);
+    el.querySelector('.q').textContent = m.question;
+  }
+  const volEl = c.el.querySelector('.vol');
+  if (volEl && m.ticker?.volume_24h != null) volEl.textContent = `$${Math.round(m.ticker.volume_24h)} 24h`;
+  updatePrice(c.el.querySelector('[data-yes]'), c, 'prevYes', yes);
+  updatePrice(c.el.querySelector('[data-no]'), c, 'prevNo', no);
+}
+
+function updatePrice(el, c, key, val) {
+  if (val == null) return;
+  const prob = val * 100;
+  el.textContent = prob.toFixed(0) + '¢';
+  const prev = c[key];
+  if (prev != null && Math.abs(prob - prev) > 0.01) {
+    const up = prob > prev;
+    const row = el.closest('.outcome');
+    row.classList.remove('flash-up','flash-down'); void row.offsetWidth;
+    row.classList.add(up ? 'flash-up' : 'flash-down');
+  }
+  c[key] = prob;
+}
+
+// ---- Polymarket overlay: match ANY market (crypto, sports, politics) via
+// Polymarket's own public-search, then stream its live price for the divergence.
+const triedMatch = new Set(); // condition_ids we've already searched (matched or not)
+
+// Normalize a title for comparison: lowercase, drop punctuation & filler words.
+function norm(s) {
+  return (s||'').toLowerCase().replace(/team |the |\bvs\.?\b|[^a-z0-9 ]/g, ' ').replace(/\s+/g,' ').trim();
+}
+function tokens(s) { return new Set(norm(s).split(' ').filter(w => w.length > 2)); }
+function similarity(a, b) {
+  const A = tokens(a), B = tokens(b); if (!A.size || !B.size) return 0;
+  let inter = 0; for (const w of A) if (B.has(w)) inter++;
+  return inter / Math.min(A.size, B.size);
+}
+
+// The crypto asset a question is about, if it's a daily "up or down".
+function cryptoAsset(question) {
+  const q = question.toLowerCase();
+  if (!/up or down/.test(q)) return null;
+  if (/btc|bitcoin/.test(q)) return 'bitcoin';
+  if (/eth|ethereum/.test(q)) return 'ethereum';
+  if (/\bbnb\b/.test(q)) return 'bnb';
+  if (/\bsol|solana/.test(q)) return 'solana';
+  return null;
+}
+
+let activeCache = null, activeAt = 0;
+async function getActiveMarkets() {
+  if (activeCache && Date.now() - activeAt < 60000) return activeCache;
+  const r = await fetch(`${GAMMA}/markets?active=true&closed=false&limit=300&order=volume24hr&ascending=false`);
+  activeCache = await r.json(); activeAt = Date.now();
+  return activeCache;
+}
+
+function isLive(m) {
+  // skip resolved (prices pinned to 0/1) and non-tradeable
+  let p; try { p = JSON.parse(m.outcomePrices || '[]'); } catch { p = []; }
+  const resolved = p.length && p.every(x => +x === 0 || +x === 1);
+  return m.clobTokenIds && m.acceptingOrders !== false && !resolved;
+}
+
+// Find the Polymarket market matching a Foresight question. Crypto dailies use
+// the active-markets list (surfaces the liquid daily, skips resolved 5-min
+// clones); everything else (sports, politics) uses Polymarket's public-search,
+// preferring the plain "A vs B" moneyline over spread/over-under derivatives.
+async function findPolyMatch(question) {
+  const asset = cryptoAsset(question);
+  if (asset) {
+    const actives = await getActiveMarkets().catch(() => []);
+    // the current daily is "<asset> up or down on <date>" (has "on"), most liquid
+    const cands = actives.filter(m => new RegExp(`${asset} up or down`, 'i').test(m.question || '') && isLive(m));
+    return cands.find(m => /up or down on/i.test(m.question)) || cands[0] || null;
+  }
+  const r = await fetch(`${GAMMA}/public-search?q=${encodeURIComponent(question.slice(0, 60))}`).catch(() => null);
+  if (!r || !r.ok) return null;
+  const j = await r.json().catch(() => null);
+  let best = null, bestScore = 0;
+  for (const ev of j?.events || []) {
+    for (const m of ev.markets || []) {
+      if (!isLive(m)) continue;
+      const isDerivative = /spread|o\/u|over\/under|handicap/i.test(m.question || '');
+      const score = similarity(question, m.question) - (isDerivative ? 0.25 : 0);
+      if (score > bestScore) { bestScore = score; best = m; }
+    }
+  }
+  return bestScore >= 0.5 ? best : null;
+}
+
+// Only bother matching markets that plausibly have a Polymarket twin — sports
+// head-to-heads (" vs ") and BTC/ETH/BNB dailies. Skips NVDA/SPY/WTI etc. that
+// Polymarket doesn't carry, so the one-time overlay pass stays fast.
+function worthMatching(question) {
+  return / vs\.? /i.test(question) || !!cryptoAsset(question);
+}
+async function ensurePolyOverlay(markets) {
+  for (const m of markets) {
+    if (triedMatch.has(m.condition_id)) continue;
+    if (!worthMatching(m.question)) { triedMatch.add(m.condition_id); continue; }
+    triedMatch.add(m.condition_id);
+    const pm = await findPolyMatch(m.question).catch(() => null);
+    if (!pm) continue;
+    let tokenIds; try { tokenIds = JSON.parse(pm.clobTokenIds); } catch { continue; }
+    polyByCondition.set(m.condition_id, { tokenIds, books: Object.fromEntries(tokenIds.map(t => [t, { bids:new Map(), asks:new Map() }])) });
+    tokenIds.forEach(t => assetToCondition.set(t, m.condition_id));
+    resubscribe();
+  }
+}
+function connectWs() {
+  ws = new WebSocket(WS_URL);
+  ws.onopen = resubscribe;
+  ws.onclose = () => { clearTimeout(reconnectT); reconnectT = setTimeout(connectWs, 1500); };
+  ws.onerror = () => { try { ws.close(); } catch {} };
+  ws.onmessage = onWsMessage;
+}
+function resubscribe() {
+  if (!ws || ws.readyState !== 1) return;
+  const ids = [...assetToCondition.keys()];
+  if (ids.length) ws.send(JSON.stringify({ assets_ids: ids, type: 'market' }));
+}
+function bestMid(book) {
+  let bid=null, ask=null;
+  for (const [p,s] of book.bids) if (s>0){const n=+p; if(bid===null||n>bid)bid=n;}
+  for (const [p,s] of book.asks) if (s>0){const n=+p; if(ask===null||n<ask)ask=n;}
+  return bid!=null&&ask!=null ? (bid+ask)/2 : (bid ?? ask);
+}
+function onWsMessage(ev) {
+  let arr; try { arr = JSON.parse(ev.data); } catch { return; }
+  if (!Array.isArray(arr)) arr = [arr];
+  const touched = new Set();
+  for (const e of arr) {
+    const cid = assetToCondition.get(e.asset_id); if (!cid) continue;
+    const ov = polyByCondition.get(cid); const book = ov.books[e.asset_id]; if (!book) continue;
+    if (e.event_type === 'book') {
+      book.bids.clear(); book.asks.clear();
+      for (const l of e.bids||[]) book.bids.set(l.price, +l.size);
+      for (const l of e.asks||[]) book.asks.set(l.price, +l.size);
+    } else if (e.event_type === 'price_change') {
+      for (const ch of (e.changes || (e.price!=null?[e]:[]))) {
+        const side = (ch.side||'').toUpperCase()==='SELL' ? 'asks' : 'bids';
+        const sz = +ch.size; if (sz>0) book[side].set(ch.price, sz); else book[side].delete(ch.price);
+      }
+    }
+    touched.add(cid);
+  }
+  for (const cid of touched) renderPoly(cid);
+}
+function renderPoly(cid) {
+  const c = cards.get(cid); const ov = polyByCondition.get(cid);
+  if (!c || !ov) return;
+  // tokenIds[0] = first outcome = "Up"/YES on these markets
+  const mid = bestMid(ov.books[ov.tokenIds[0]]);
+  if (mid == null) return;
+  const polyYes = mid * 100;
+  const el = c.el.querySelector('[data-polyyes]');
+  const fsYes = c.prevYes;
+  const div = fsYes != null ? polyYes - fsYes : null;
+  let divStr = '';
+  if (div != null) {
+    const cls = Math.abs(div) >= 2 ? (div > 0 ? 'up' : 'down') : 'dim';
+    divStr = ` · <span class="diverge ${cls}">Δ${div>0?'+':''}${div.toFixed(0)}</span>`;
+  }
+  el.innerHTML = `Polymarket ${polyYes.toFixed(0)}%${divStr}`;
+}
+
+// ---- boot ----
+refresh(true);
+// Poll as fast as the network floor allows (~420ms/request); the re-entrancy
+// guard skips a tick if the last is still in flight, so this self-throttles.
+setInterval(refresh, 500);    // Foresight prices — ~0.5s, near the network limit
+connectWs();                   // Polymarket live overlay — true real-time (ms)
+</script>
+</body>
+</html>
