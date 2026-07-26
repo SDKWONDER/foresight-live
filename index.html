@@ -80,7 +80,7 @@ async function search(){
     for(const {ev, m} of items.slice(0,30)){
       const d=document.createElement('div');
       d.innerHTML = `${m.question} <small>${ev.title!==m.question?'· '+ev.title:''}</small>`;
-      d.onclick=()=>{ addMarket(m); resEl.style.display='none'; qEl.value=''; qEl.blur(); };
+      d.onclick=()=>{ addMarket(m, true); resEl.style.display='none'; qEl.value=''; qEl.blur(); };
       resEl.appendChild(d);
     }
   } catch(e){ resEl.innerHTML=`<div>Search failed: ${e.message}</div>`; }
@@ -90,11 +90,17 @@ qEl.addEventListener('keydown',e=>{ if(e.key==='Enter') search(); });
 document.addEventListener('click',e=>{ if(!resEl.contains(e.target)&&e.target!==qEl&&e.target.id!=='go') resEl.style.display='none'; });
 
 // ---- add / remove a market ----
-function addMarket(m){
+// `fromSearch` markets are put at the TOP and scrolled to, so on a phone you
+// immediately see the one you just tapped (instead of it landing off-screen
+// below the auto-loaded cards, which looked like "nothing happened").
+function addMarket(m, fromSearch=false){
   const id = String(m.id || m.conditionId || m.clobTokenIds);
-  if(watch.has(id)) return;
+  if(watch.has(id)){ const w=watch.get(id); w.card.scrollIntoView({behavior:'smooth',block:'center'}); return; }
   let tokenIds, outcomes;
-  try { tokenIds=JSON.parse(m.clobTokenIds); outcomes=JSON.parse(m.outcomes||'["Yes","No"]'); } catch { return; }
+  try {
+    tokenIds = Array.isArray(m.clobTokenIds) ? m.clobTokenIds : JSON.parse(m.clobTokenIds);
+    outcomes = Array.isArray(m.outcomes) ? m.outcomes : JSON.parse(m.outcomes||'["Yes","No"]');
+  } catch { return; }
   const board=document.getElementById('board');
   if(board.querySelector('.empty')) board.innerHTML='';
   const card=document.createElement('div'); card.className='card';
@@ -109,9 +115,10 @@ function addMarket(m){
     rows.appendChild(row); rowEls[tid]=row; assetToMarket.set(tid,id);
   });
   card.querySelector('.x').onclick=()=>removeMarket(id);
-  board.appendChild(card);
+  if(fromSearch) board.insertBefore(card, board.firstChild); else board.appendChild(card);
   watch.set(id,{ question:m.question, tokenIds, outcomes, card, rowEls,
     books:Object.fromEntries(tokenIds.map(t=>[t,{bids:new Map(),asks:new Map(),last:null}])), prob:{}, lastUpdate:0 });
+  if(fromSearch) card.scrollIntoView({behavior:'smooth',block:'center'});
   resubscribe();
 }
 function removeMarket(id){
@@ -184,6 +191,12 @@ function render(id){
 }
 
 setInterval(()=>{ const now=performance.now(); for(const w of watch.values()){ const el=w.card.querySelector('[data-age]'); if(!el)continue; const ms=w.lastUpdate?now-w.lastUpdate:null; el.textContent=ms==null?'—':ms<1000?Math.round(ms)+'ms ago':(ms/1000).toFixed(1)+'s ago'; el.style.color=ms!=null&&ms<2500?'var(--up)':'var(--dim)'; } },100);
+
+// Re-subscribe every 8s: Polymarket replies with a fresh book snapshot for
+// each market, which keeps quiet markets' prices/timestamps current (so a
+// market that simply hasn't traded still reads "fresh", not stale). Active
+// markets keep updating in real time via the push stream between these.
+setInterval(resubscribe, 8000);
 
 connect();
 autoLoad();
