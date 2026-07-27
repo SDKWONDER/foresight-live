@@ -2,204 +2,381 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
-<title>Live Prices ⚡</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Polymarket Live ⚡</title>
 <style>
-  :root { --bg:#0b0e14; --panel:#141924; --panel2:#1c2431; --line:#263041; --txt:#e6edf3; --dim:#8b98a9; --up:#2ec26b; --down:#ff5470; --accent:#6ea8fe; }
-  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-  body { margin:0; background:var(--bg); color:var(--txt); font:15px/1.4 -apple-system,"Segoe UI",Roboto,sans-serif; }
-  header { padding:10px 14px; border-bottom:1px solid var(--line); position:sticky; top:0; background:var(--bg); z-index:5; }
-  .row1 { display:flex; align-items:center; gap:10px; }
-  header h1 { font-size:16px; margin:0; white-space:nowrap; }
-  .status { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--dim); margin-left:auto; }
-  .dot { width:9px; height:9px; border-radius:50%; background:var(--down); }
-  .dot.live { background:var(--up); box-shadow:0 0 8px var(--up); }
-  .searchbar { display:flex; gap:8px; margin-top:9px; }
-  .searchbar input { flex:1; background:var(--panel2); border:1px solid var(--line); color:var(--txt); padding:10px 12px; border-radius:9px; font-size:15px; outline:none; }
-  .searchbar input:focus { border-color:var(--accent); }
-  .searchbar button { background:var(--accent); color:#06101f; border:0; padding:0 16px; border-radius:9px; font-weight:600; font-size:15px; }
-  #results { background:var(--panel2); border:1px solid var(--line); border-radius:10px; margin:9px 14px 0; overflow:hidden; display:none; }
-  #results div { padding:11px 14px; border-bottom:1px solid var(--line); cursor:pointer; font-size:14px; }
-  #results div:active { background:var(--panel); }
-  #results small { color:var(--dim); }
-  main { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:12px; padding:14px; }
-  .card { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px; }
-  .card .q { font-size:14px; font-weight:600; margin-bottom:3px; }
-  .card .meta { font-size:11px; color:var(--dim); margin-bottom:11px; display:flex; justify-content:space-between; }
-  .card .x { cursor:pointer; padding:0 4px; }
-  .card .x:active { color:var(--down); }
-  .outcome { display:flex; align-items:center; justify-content:space-between; padding:10px 12px; border-radius:10px; background:var(--panel2); margin-bottom:7px; }
-  .outcome .name { font-weight:600; font-size:14px; max-width:55%; }
-  .prices { text-align:right; font-variant-numeric:tabular-nums; }
-  .prob { font-size:28px; font-weight:700; letter-spacing:-.5px; }
-  .delta { font-size:12px; margin-left:6px; }
-  .sub { font-size:10px; color:var(--dim); }
-  .flash-up { animation:fu .5s; } .flash-down { animation:fd .5s; }
-  @keyframes fu { 0%{background:rgba(46,194,107,.4);} 100%{background:var(--panel2);} }
-  @keyframes fd { 0%{background:rgba(255,84,112,.4);} 100%{background:var(--panel2);} }
-  .up { color:var(--up); } .down { color:var(--down); }
-  .empty { color:var(--dim); padding:40px 18px; text-align:center; grid-column:1/-1; }
-  .age { font-variant-numeric:tabular-nums; }
+  :root{
+    --bg:#0a0d13; --panel:#141924; --panel2:#1b2330; --line:#243044;
+    --txt:#e8eef6; --dim:#8a97a9; --up:#2ee6a0; --down:#ff5c7a;
+    --accent:#7aa2ff; --live:#ff4d4d; --gold:#ffcf5c;
+  }
+  *{box-sizing:border-box}
+  html,body{overflow-x:hidden}
+  body{margin:0;background:var(--bg);color:var(--txt);
+    font:15px/1.4 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+  header{position:sticky;top:0;z-index:20;background:linear-gradient(180deg,#0a0d13 70%,rgba(10,13,19,.9));
+    border-bottom:1px solid var(--line);padding:10px 16px 8px}
+  .top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  h1{font-size:16px;margin:0;letter-spacing:.3px;white-space:nowrap}
+  h1 .z{color:var(--accent)}
+  .search{flex:1;min-width:180px;position:relative}
+  .search input{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--txt);
+    padding:9px 12px 9px 34px;border-radius:10px;font-size:14px;outline:none}
+  .search input:focus{border-color:var(--accent)}
+  .search svg{position:absolute;left:11px;top:50%;transform:translateY(-50%);opacity:.5}
+  .status{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--dim);white-space:nowrap}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--down);transition:background .3s}
+  .dot.on{background:var(--up);box-shadow:0 0 9px var(--up)}
+  .lat{font-variant-numeric:tabular-nums;color:var(--dim)}
+  .chips{display:flex;gap:7px;margin-top:9px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+  .chips::-webkit-scrollbar{display:none}
+  .chip{white-space:nowrap;padding:6px 12px;border-radius:20px;border:1px solid var(--line);
+    background:var(--panel);cursor:pointer;user-select:none;font-size:13px;color:var(--dim);transition:.12s}
+  .chip:hover{border-color:var(--accent)}
+  .chip.on{background:var(--accent);color:#08111f;border-color:var(--accent);font-weight:650}
+  .chip .n{opacity:.6;font-size:11px;margin-left:3px}
+  .chip.on .n{opacity:.8}
+  .chip.livef{border-color:#4a2530}
+  .chip.livef.on{background:var(--live);border-color:var(--live);color:#fff}
+
+  main{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;padding:14px 16px 40px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 13px;
+    display:flex;flex-direction:column;min-height:0}
+  .card.crypto{border-color:#2a2f1f;background:linear-gradient(160deg,#161a10,#141924)}
+  .chead{display:flex;align-items:center;gap:7px;margin-bottom:9px;font-size:11px;color:var(--dim)}
+  .badge{padding:2px 8px;border-radius:6px;background:var(--panel2);font-weight:600;letter-spacing:.2px}
+  .badge.cat{color:var(--accent)}
+  .live-badge{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:6px;
+    background:rgba(255,77,77,.14);color:#ff7a7a;font-weight:700}
+  .live-badge .b{width:6px;height:6px;border-radius:50%;background:var(--live);animation:pulse 1.2s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+  .when{margin-left:auto;white-space:nowrap}
+  .title{font-size:14.5px;font-weight:650;margin-bottom:11px;line-height:1.25}
+  .rows{display:flex;flex-direction:column;gap:6px;margin-top:auto}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:10px;
+    padding:9px 11px;border-radius:10px;background:var(--panel2);position:relative;overflow:hidden}
+  .row .nm{font-weight:600;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .row .nm.draw{color:var(--gold)}
+  .pr{font-variant-numeric:tabular-nums;font-weight:750;font-size:19px;letter-spacing:-.5px;white-space:nowrap}
+  .pr .u{font-size:11px;color:var(--dim);font-weight:600;margin-left:1px}
+  .arw{font-size:11px;margin-left:6px;width:8px;display:inline-block}
+  .up{color:var(--up)} .down{color:var(--down)}
+  .flash-up{animation:fu .55s} .flash-down{animation:fd .55s}
+  @keyframes fu{0%{background:rgba(46,230,160,.32)}100%{background:var(--panel2)}}
+  @keyframes fd{0%{background:rgba(255,92,122,.32)}100%{background:var(--panel2)}}
+  .updown .nm::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px;vertical-align:1px}
+  .updown.up-row .nm::before{background:var(--up)} .updown.down-row .nm::before{background:var(--down)}
+  .empty{grid-column:1/-1;color:var(--dim);text-align:center;padding:60px 20px}
+  .empty b{color:var(--txt)}
+  .sec-label{grid-column:1/-1;font-size:12px;color:var(--dim);font-weight:700;letter-spacing:.6px;
+    text-transform:uppercase;margin:6px 2px -2px;display:flex;align-items:center;gap:8px}
+  .sec-label::after{content:"";flex:1;height:1px;background:var(--line)}
 </style>
 </head>
 <body>
 <header>
-  <div class="row1">
-    <h1>⚡ Live Prices</h1>
-    <span class="status"><span class="dot" id="dot"></span><span id="statusText">connecting…</span></span>
+  <div class="top">
+    <h1><span class="z">⚡</span> Polymarket Live</h1>
+    <div class="search">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+      <input id="q" placeholder="Search team, player, market…" autocomplete="off" spellcheck="false"/>
+    </div>
+    <div class="status"><span class="dot" id="dot"></span><span id="stat">connecting…</span><span class="lat" id="lat"></span></div>
   </div>
-  <div class="searchbar">
-    <input id="q" placeholder="Search any market — bitcoin, a team, an event…" autocomplete="off" />
-    <button id="go">Search</button>
-  </div>
+  <div class="chips" id="chips"></div>
 </header>
-<div id="results"></div>
-<main id="board"><div class="empty">Loading popular sports & crypto markets… or search any market above.</div></main>
+<main id="board"><div class="empty">Loading live Polymarket markets…</div></main>
 
 <script>
-const GAMMA = 'https://gamma-api.polymarket.com';
-const WS_URL = 'wss://ws-subscriptions-clob.polymarket.com/ws/market';
-const watch = new Map();
-const assetToMarket = new Map();
-let ws = null, reconnectT = null;
+const GAMMA='https://gamma-api.polymarket.com';
+const WS_URL='wss://ws-subscriptions-clob.polymarket.com/ws/market';
+const LIST_REFRESH_MS=25000;   // how often we re-scan which games exist
+const MAX_EVENTS=280;          // cap for a snappy board / light WS
 
-const qEl = document.getElementById('q'), resEl = document.getElementById('results');
-function setStatus(live, text){ document.getElementById('dot').className='dot'+(live?' live':''); document.getElementById('statusText').textContent=text; }
-function isLive(m){ let p; try{p=JSON.parse(m.outcomePrices||'[]');}catch{p=[];} const res=p.length&&p.every(x=>+x===0||+x===1); return m.clobTokenIds && m.acceptingOrders!==false && !res; }
-
-// ---- comprehensive search (Polymarket's own public-search) ----
-async function search(){
-  const term = qEl.value.trim(); if(!term) return;
-  resEl.style.display='block'; resEl.innerHTML='<div>Searching…</div>';
-  try {
-    const j = await (await fetch(`${GAMMA}/public-search?q=${encodeURIComponent(term)}`)).json();
-    const items = [];
-    for(const ev of j.events||[]) for(const m of ev.markets||[]) if(isLive(m)) items.push({ ev, m });
-    if(!items.length){ resEl.innerHTML='<div>No live markets match that.</div>'; return; }
-    resEl.innerHTML='';
-    for(const {ev, m} of items.slice(0,30)){
-      const d=document.createElement('div');
-      d.innerHTML = `${m.question} <small>${ev.title!==m.question?'· '+ev.title:''}</small>`;
-      d.onclick=()=>{ addMarket(m, true); resEl.style.display='none'; qEl.value=''; qEl.blur(); };
-      resEl.appendChild(d);
-    }
-  } catch(e){ resEl.innerHTML=`<div>Search failed: ${e.message}</div>`; }
+// ---------- categories ----------
+const CATS=[
+  {key:'crypto',   label:'⚡ Crypto',    tags:[]},
+  {key:'soccer',   label:'⚽ Soccer',    tags:['soccer']},
+  {key:'basketball',label:'🏀 Basketball',tags:['basketball','nba','wnba','ncaab','euroleague']},
+  {key:'football', label:'🏈 Football',  tags:['nfl','americanfootball','ncaaf','cfb','college-football']},
+  {key:'baseball', label:'⚾ Baseball',  tags:['mlb','baseball','npb']},
+  {key:'hockey',   label:'🏒 Hockey',    tags:['nhl','hockey']},
+  {key:'tennis',   label:'🎾 Tennis',    tags:['tennis']},
+  {key:'combat',   label:'🥊 Combat',    tags:['mma','ufc','boxing']},
+  {key:'cricket',  label:'🏏 Cricket',   tags:['cricket']},
+  {key:'golf',     label:'⛳ Golf',      tags:['golf','pga']},
+  {key:'racing',   label:'🏁 Racing',    tags:['f1','formula-1','nascar','racing','motogp']},
+  {key:'esports',  label:'🎮 Esports',   tags:['esports','league-of-legends','dota-2','counter-strike','cs2','valorant','rocket-league','overwatch']},
+  {key:'other',    label:'• Other',      tags:[]},
+];
+const CAT_LABEL=Object.fromEntries(CATS.map(c=>[c.key,c.label]));
+function categorize(tagSlugs){
+  for(const c of CATS){ if(c.key!=='crypto'&&c.key!=='other'&&c.tags.some(t=>tagSlugs.includes(t))) return c.key; }
+  return 'other';
 }
-document.getElementById('go').onclick=search;
-qEl.addEventListener('keydown',e=>{ if(e.key==='Enter') search(); });
-document.addEventListener('click',e=>{ if(!resEl.contains(e.target)&&e.target!==qEl&&e.target.id!=='go') resEl.style.display='none'; });
 
-// ---- add / remove a market ----
-// `fromSearch` markets are put at the TOP and scrolled to, so on a phone you
-// immediately see the one you just tapped (instead of it landing off-screen
-// below the auto-loaded cards, which looked like "nothing happened").
-function addMarket(m, fromSearch=false){
-  const id = String(m.id || m.conditionId || m.clobTokenIds);
-  if(watch.has(id)){ const w=watch.get(id); w.card.scrollIntoView({behavior:'smooth',block:'center'}); return; }
-  let tokenIds, outcomes;
-  try {
-    tokenIds = Array.isArray(m.clobTokenIds) ? m.clobTokenIds : JSON.parse(m.clobTokenIds);
-    outcomes = Array.isArray(m.outcomes) ? m.outcomes : JSON.parse(m.outcomes||'["Yes","No"]');
-  } catch { return; }
-  const board=document.getElementById('board');
-  if(board.querySelector('.empty')) board.innerHTML='';
-  const card=document.createElement('div'); card.className='card';
-  card.innerHTML=`<div class="q">${m.question}</div>
-    <div class="meta"><span>updated <span class="age" data-age>—</span></span><span class="x">✕</span></div>
-    <div class="rows"></div>`;
-  const rows=card.querySelector('.rows'); const rowEls={};
-  tokenIds.forEach((tid,i)=>{
-    const row=document.createElement('div'); row.className='outcome';
-    row.innerHTML=`<span class="name">${outcomes[i]??'Outcome '+i}</span>
-      <span class="prices"><span class="prob" data-prob>—</span><span class="delta" data-delta></span><div class="sub" data-sub></div></span>`;
-    rows.appendChild(row); rowEls[tid]=row; assetToMarket.set(tid,id);
+// ---------- state ----------
+const board=new Map();   // eventId -> {el, cat, live, startMs, vol, searchText, outcomes:[{tokenId,label,prob,prev,prEl,rowEl}]}
+const tokenMap=new Map();// tokenId -> {eventId, idx}
+const books=new Map();   // tokenId -> {bids:Map, asks:Map}
+let ws=null, reconnectT=null, lastMsgAt=0;
+let activeCat='all', queryText='', liveOnly=false;
+
+function jparse(s,d){try{return JSON.parse(s)}catch{return d}}
+function cleanLabel(s){return (s||'').replace(/\s*\(.*\)\s*$/,'').trim();}
+
+// ---------- fetching the market list ----------
+async function fetchSports(){
+  const out=[];
+  for(let off=0; off<MAX_EVENTS; off+=100){
+    const evs=await fetch(`${GAMMA}/events?tag_slug=sports&active=true&closed=false&limit=100&offset=${off}&order=volume24hr&ascending=false`).then(r=>r.ok?r.json():[]).catch(()=>[]);
+    if(!Array.isArray(evs)||!evs.length) break;
+    out.push(...evs);
+    if(evs.length<100) break;
+  }
+  return out;
+}
+function extractSport(ev){
+  const ml=(ev.markets||[]).filter(m=>m.sportsMarketType==='moneyline'&&m.active!==false&&m.closed!==true&&m.acceptingOrders!==false&&m.clobTokenIds);
+  if(!ml.length) return null;
+  let outs;
+  if(ml.length===1){
+    const m=ml[0], names=jparse(m.outcomes,[]), toks=jparse(m.clobTokenIds,[]), pr=jparse(m.outcomePrices,[]);
+    if(names[0]==='Yes') return null; // lone yes/no isn't a full match
+    outs=names.map((o,i)=>({label:o,tokenId:toks[i],prob:pr[i]!=null?+pr[i]:null}));
+  }else{
+    outs=ml.map(m=>{const toks=jparse(m.clobTokenIds,[]),pr=jparse(m.outcomePrices,[]);
+      return {label:cleanLabel(m.groupItemTitle),tokenId:toks[0],prob:pr[0]!=null?+pr[0]:null};});
+  }
+  outs=outs.filter(o=>o.tokenId&&o.label);
+  if(outs.length<2||outs.length>3) return null;  // real match moneyline only
+  // draw last for 3-way readability
+  outs.sort((a,b)=>(/^draw$/i.test(a.label)?1:0)-(/^draw$/i.test(b.label)?1:0));
+  return outs;
+}
+async function fetchCrypto(){
+  const now=Date.now(), cards=[];
+  for(const [asset,tag] of [['BTC','bitcoin'],['ETH','ethereum']]){
+    const evs=await fetch(`${GAMMA}/events?tag_slug=${tag}&active=true&closed=false&limit=40&order=liquidity&ascending=false`).then(r=>r.ok?r.json():[]).catch(()=>[]);
+    // Up/Down are short recurring windows. Keep only ones whose window hasn't
+    // ended yet (drops stale never-closed leftovers pinned at 0/100), then pick
+    // the one in play now (start≤now<end), else the soonest upcoming window.
+    const ud=(Array.isArray(evs)?evs:[]).filter(e=>/up or down/i.test(e.title)&&e.markets?.[0]?.acceptingOrders!==false&&e.markets?.[0]?.clobTokenIds&&(Date.parse(e.endDate)||0)>now)
+      .sort((a,b)=>(Date.parse(a.endDate)||0)-(Date.parse(b.endDate)||0));
+    const e=ud.find(x=>(Date.parse(x.startDate)||0)<=now)||ud[0];
+    if(!e) continue;
+    const m=e.markets[0], names=jparse(m.outcomes,[]), toks=jparse(m.clobTokenIds,[]), pr=jparse(m.outcomePrices,[]);
+    const outs=names.map((o,i)=>({label:o,tokenId:toks[i],prob:pr[i]!=null?+pr[i]:null})).filter(o=>o.tokenId);
+    if(outs.length!==2) continue;
+    const startMs=Date.parse(e.startDate)||0, endMs=Date.parse(e.endDate)||0;
+    cards.push({id:'c_'+asset, cat:'crypto', title:`${asset} · ${e.title.replace(/^.*?Up or Down\s*-?\s*/i,'Up or Down · ')}`,
+      startMs, endMs, vol:+e.liquidity||0, outcomes:outs, crypto:true, asset,
+      live: startMs<=now && (!endMs||endMs>now)});
+  }
+  return cards;
+}
+
+async function loadList(){
+  try{
+    const [sportsEvs, cryptoCards]=await Promise.all([fetchSports(), fetchCrypto()]);
+    const now=Date.now();
+    const items=[...cryptoCards];
+    for(const e of sportsEvs){
+      const outs=extractSport(e); if(!outs) continue;
+      const tagSlugs=(e.tags||[]).map(t=>t.slug);
+      const startMs=Date.parse(e.startDate)||0, endMs=Date.parse(e.endDate)||0;
+      items.push({id:'e_'+e.id, cat:categorize(tagSlugs), title:e.title,
+        startMs, endMs, vol:+e.volume24hr||0, outcomes:outs,
+        live: startMs && startMs<=now && (!endMs||endMs>now)});
+    }
+    if(items.length>MAX_EVENTS+8) items.length=MAX_EVENTS+8;
+    reconcile(items);
+    setStatus(ws&&ws.readyState===1);
+  }catch(e){ setStatus(false,'list error'); }
+}
+
+// ---------- DOM reconcile ----------
+function reconcile(items){
+  const boardEl=document.getElementById('board');
+  const empty=boardEl.querySelector('.empty'); if(empty) empty.remove();
+  const keep=new Set(items.map(i=>i.id));
+  for(const [id,c] of board){ if(!keep.has(id)){ c.el.remove(); board.delete(id);
+    for(const o of c.outcomes) tokenMap.delete(o.tokenId); } }
+
+  for(const it of items){
+    let c=board.get(it.id);
+    if(!c){
+      const el=document.createElement('div');
+      el.className='card'+(it.crypto?' crypto':'');
+      el.innerHTML=`<div class="chead"></div><div class="title"></div><div class="rows"></div>`;
+      c={el, outcomes:[]};
+      board.set(it.id,c);
+      el.querySelector('.title').textContent=it.title;
+    }
+    c.cat=it.cat; c.live=it.live; c.startMs=it.startMs; c.endMs=it.endMs; c.vol=it.vol; c.crypto=it.crypto;
+    c.searchText=(it.title+' '+it.outcomes.map(o=>o.label).join(' ')+' '+CAT_LABEL[it.cat]).toLowerCase();
+    // header
+    c.el.querySelector('.chead').innerHTML =
+      `<span class="badge cat">${CAT_LABEL[it.cat]||it.cat}</span>`+
+      (it.live?`<span class="live-badge"><span class="b"></span>LIVE</span>`:'')+
+      `<span class="when">${whenText(it)}</span>`;
+    // rows
+    const rowsEl=c.el.querySelector('.rows');
+    if(c.outcomes.length!==it.outcomes.length){ rowsEl.innerHTML=''; c.outcomes=[]; }
+    it.outcomes.forEach((o,i)=>{
+      let ro=c.outcomes[i];
+      if(!ro){
+        const row=document.createElement('div');
+        const isDraw=/^draw$/i.test(o.label);
+        row.className='row'+(it.crypto?' updown '+(o.label.toLowerCase()==='up'?'up-row':'down-row'):'');
+        row.innerHTML=`<span class="nm${isDraw?' draw':''}"></span><span class="pr">—<span class="arw"></span></span>`;
+        rowsEl.appendChild(row);
+        ro={rowEl:row, prEl:row.querySelector('.pr'), arwEl:row.querySelector('.arw'), prob:null, prev:null};
+        row.querySelector('.nm').textContent=o.label;
+        c.outcomes[i]=ro;
+      }
+      ro.tokenId=o.tokenId; ro.label=o.label;
+      tokenMap.set(o.tokenId,{eventId:it.id, idx:i});
+      if(o.prob!=null && ro.prob==null) setProb(ro,o.prob*100,false);
+    });
+  }
+  sortAndFilter();
+  resubscribe();
+}
+
+function whenText(it){
+  if(it.crypto && it.endMs){
+    const d=it.endMs-Date.now();
+    if(d<=0) return 'resolving';
+    const m=Math.floor(d/60000), s=Math.round(d%60000/1000);
+    return m>0?`resolves in ${m}m`:`resolves in ${s}s`;
+  }
+  if(it.live) return 'in play';
+  if(!it.startMs) return '';
+  const d=it.startMs-Date.now();
+  if(d<0) return 'started';
+  const h=Math.floor(d/3600000), m=Math.round(d%3600000/60000);
+  if(h>=24) return new Date(it.startMs).toLocaleDateString([], {month:'short',day:'numeric'});
+  if(h>=1) return `in ${h}h ${m}m`;
+  return `in ${m}m`;
+}
+
+// ---------- sort + filter (only on reconcile / user input, not per tick) ----------
+function sortAndFilter(){
+  const boardEl=document.getElementById('board');
+  const arr=[...board.values()];
+  arr.sort((a,b)=>{
+    if(!!b.crypto - !!a.crypto) return !!b.crypto - !!a.crypto; // crypto pinned top
+    if(!!b.live - !!a.live) return !!b.live - !!a.live;         // live next
+    const as=a.startMs||Infinity, bs=b.startMs||Infinity;
+    if(a.live&&b.live) return b.vol-a.vol;                      // both live -> volume
+    return as-bs;                                               // else soonest first
   });
-  card.querySelector('.x').onclick=()=>removeMarket(id);
-  if(fromSearch) board.insertBefore(card, board.firstChild); else board.appendChild(card);
-  watch.set(id,{ question:m.question, tokenIds, outcomes, card, rowEls,
-    books:Object.fromEntries(tokenIds.map(t=>[t,{bids:new Map(),asks:new Map(),last:null}])), prob:{}, lastUpdate:0 });
-  if(fromSearch) card.scrollIntoView({behavior:'smooth',block:'center'});
-  resubscribe();
-}
-function removeMarket(id){
-  const w=watch.get(id); if(!w) return; w.card.remove();
-  w.tokenIds.forEach(t=>assetToMarket.delete(t)); watch.delete(id);
-  if(!watch.size) document.getElementById('board').innerHTML='<div class="empty">Search any market above to start watching.</div>';
-  resubscribe();
-}
-
-// ---- auto-load popular sports + crypto on open ----
-async function autoLoad(){
-  try {
-    const actives = await (await fetch(`${GAMMA}/markets?active=true&closed=false&limit=200&order=volume24hr&ascending=false`)).json();
-    let added=0;
-    for(const m of actives){
-      if(added>=14) break;
-      if(!isLive(m)) continue;
-      const q=(m.question||'').toLowerCase();
-      const sport = / vs\.? /i.test(q);
-      const crypto = /up or down/.test(q) && /(bitcoin|ethereum|\bbnb\b|\bsol)/.test(q);
-      if(sport||crypto){ addMarket(m); added++; }
-    }
-    const emptyEl = document.getElementById('board').querySelector('.empty');
-    if(!added && emptyEl) emptyEl.textContent='Search any market above to start watching.';
-  } catch {}
+  let shown=0;
+  for(const c of arr){
+    const ok=(activeCat==='all'||c.cat===activeCat)&&(!liveOnly||c.live||c.crypto)&&(!queryText||c.searchText.includes(queryText));
+    c.el.style.display=ok?'':'none';
+    if(ok){ boardEl.appendChild(c.el); shown++; }
+  }
+  renderChips();
+  let e=boardEl.querySelector('.empty');
+  if(!shown){ if(!e){e=document.createElement('div');e.className='empty';boardEl.appendChild(e);}
+    e.innerHTML=`No markets match <b>${queryText||CAT_LABEL[activeCat]||''}</b>.`; }
+  else if(e) e.remove();
 }
 
-// ---- websocket (real-time, ms) ----
-function connect(){
+function renderChips(){
+  const counts={all:0}; for(const c of board.values()){ counts.all++; counts[c.cat]=(counts[c.cat]||0)+1; }
+  const el=document.getElementById('chips');
+  const cats=[['all','All'],...CATS.map(c=>[c.key,c.label]).filter(([k])=>counts[k])];
+  el.innerHTML=`<span class="chip livef${liveOnly?' on':''}" data-live="1">🔴 Live</span>`+
+    cats.map(([k,l])=>`<span class="chip${activeCat===k?' on':''}" data-cat="${k}">${l}<span class="n">${counts[k]||0}</span></span>`).join('');
+  el.querySelectorAll('[data-cat]').forEach(ch=>ch.onclick=()=>{activeCat=ch.dataset.cat;sortAndFilter();});
+  el.querySelector('[data-live]').onclick=()=>{liveOnly=!liveOnly;sortAndFilter();};
+}
+
+// ---------- price rendering ----------
+function setProb(ro, prob, flash=true){
+  const prev=ro.prob;
+  ro.prEl.firstChild.textContent=prob.toFixed(1);
+  if(!ro.prEl.querySelector('.u')){ const u=document.createElement('span');u.className='u';u.textContent='¢';ro.prEl.insertBefore(u,ro.arwEl);}
+  if(flash && prev!=null && Math.abs(prob-prev)>=0.05){
+    const up=prob>prev; const r=ro.rowEl;
+    r.classList.remove('flash-up','flash-down'); void r.offsetWidth;
+    r.classList.add(up?'flash-up':'flash-down');
+    ro.arwEl.textContent=up?'▲':'▼'; ro.arwEl.className='arw '+(up?'up':'down');
+  }
+  ro.prob=prob;
+}
+
+// ---------- websocket: the millisecond channel ----------
+function connectWs(){
   ws=new WebSocket(WS_URL);
-  ws.onopen=()=>{ setStatus(true,'live'); resubscribe(); };
-  ws.onclose=()=>{ setStatus(false,'reconnecting…'); clearTimeout(reconnectT); reconnectT=setTimeout(connect,1200); };
-  ws.onerror=()=>{ try{ws.close();}catch{} };
-  ws.onmessage=onMessage;
+  ws.onopen=()=>{ setStatus(true); resubscribe(); };
+  ws.onclose=()=>{ setStatus(false,'reconnecting…'); clearTimeout(reconnectT); reconnectT=setTimeout(connectWs,1200); };
+  ws.onerror=()=>{ try{ws.close()}catch{} };
+  ws.onmessage=onMsg;
 }
-function resubscribe(){ if(!ws||ws.readyState!==1) return; const ids=[...assetToMarket.keys()]; if(ids.length) ws.send(JSON.stringify({assets_ids:ids,type:'market'})); }
-function bestBidOnly(b){let x=null;for(const[p,s]of b.bids)if(s>0){const n=+p;if(x===null||n>x)x=n;}return x;}
-function bestAskOnly(b){let x=null;for(const[p,s]of b.asks)if(s>0){const n=+p;if(x===null||n<x)x=n;}return x;}
-function bestMid(book){ const bid=bestBidOnly(book), ask=bestAskOnly(book); return bid!=null&&ask!=null?(bid+ask)/2:(bid??ask??book.last); }
-function onMessage(ev){
-  let arr; try{arr=JSON.parse(ev.data);}catch{return;} if(!Array.isArray(arr))arr=[arr];
+function resubscribe(){
+  if(!ws||ws.readyState!==1) return;
+  const ids=[...tokenMap.keys()];
+  if(ids.length) ws.send(JSON.stringify({assets_ids:ids, type:'market'}));
+}
+function bestMid(tokenId){
+  const b=books.get(tokenId); if(!b) return null;
+  let bid=null,ask=null;
+  for(const [p,s] of b.bids) if(s>0){const n=+p; if(bid===null||n>bid)bid=n;}
+  for(const [p,s] of b.asks) if(s>0){const n=+p; if(ask===null||n<ask)ask=n;}
+  return bid!=null&&ask!=null?(bid+ask)/2:(bid??ask);
+}
+function onMsg(ev){
+  lastMsgAt=Date.now();
+  let arr; try{arr=JSON.parse(ev.data)}catch{return}
+  if(!Array.isArray(arr)) arr=[arr];
   const touched=new Set();
   for(const e of arr){
-    const id=assetToMarket.get(e.asset_id); if(!id) continue;
-    const w=watch.get(id); const book=w.books[e.asset_id]; if(!book) continue;
-    if(e.event_type==='book'){ book.bids.clear();book.asks.clear();
-      for(const l of e.bids||[])book.bids.set(l.price,+l.size); for(const l of e.asks||[])book.asks.set(l.price,+l.size);
-      if(e.last_trade_price!=null)book.last=+e.last_trade_price;
-    } else if(e.event_type==='price_change'){
-      for(const c of (e.changes||(e.price!=null?[e]:[]))){ const side=(c.side||'').toUpperCase()==='SELL'?'asks':'bids'; const sz=+c.size; if(sz>0)book[side].set(c.price,sz); else book[side].delete(c.price); }
-    } else if(e.event_type==='last_trade_price'){ if(e.price!=null)book.last=+e.price; }
-    w.lastUpdate=performance.now(); touched.add(id);
+    const id=e.asset_id; if(!id||!tokenMap.has(id)) continue;
+    let bk=books.get(id); if(!bk){bk={bids:new Map(),asks:new Map()};books.set(id,bk);}
+    if(e.event_type==='book'){
+      bk.bids.clear();bk.asks.clear();
+      for(const l of e.bids||[]) bk.bids.set(l.price,+l.size);
+      for(const l of e.asks||[]) bk.asks.set(l.price,+l.size);
+    }else if(e.event_type==='price_change'){
+      for(const ch of (e.changes||(e.price!=null?[e]:[]))){
+        const side=(ch.side||'').toUpperCase()==='SELL'?'asks':'bids';
+        const sz=+ch.size; if(sz>0) bk[side].set(ch.price,sz); else bk[side].delete(ch.price);
+      }
+    } else continue;
+    touched.add(id);
   }
-  for(const id of touched) render(id);
-}
-function render(id){
-  const w=watch.get(id); if(!w) return;
-  w.tokenIds.forEach(tid=>{
-    const book=w.books[tid]; const mid=bestMid(book); if(mid==null) return;
-    const prob=mid*100, row=w.rowEls[tid], el=row.querySelector('[data-prob]'), prev=w.prob[tid];
-    el.textContent=prob.toFixed(1)+'%';
-    if(prev!=null&&Math.abs(prob-prev)>0.001){
-      const up=prob>prev; row.classList.remove('flash-up','flash-down'); void row.offsetWidth; row.classList.add(up?'flash-up':'flash-down');
-      const d=row.querySelector('[data-delta]'); const diff=prob-prev; d.textContent=(diff>0?'▲':'▼')+Math.abs(diff).toFixed(1); d.className='delta '+(up?'up':'down');
-    }
-    w.prob[tid]=prob;
-    const bid=bestBidOnly(book), ask=bestAskOnly(book);
-    row.querySelector('[data-sub]').textContent=`bid ${bid!=null?(bid*100).toFixed(1):'—'} · ask ${ask!=null?(ask*100).toFixed(1):'—'}`;
-  });
+  for(const id of touched){
+    const ref=tokenMap.get(id); const c=board.get(ref.eventId); if(!c) continue;
+    const ro=c.outcomes[ref.idx]; if(!ro) continue;
+    const mid=bestMid(id); if(mid==null) continue;
+    setProb(ro, mid*100);
+  }
 }
 
-setInterval(()=>{ const now=performance.now(); for(const w of watch.values()){ const el=w.card.querySelector('[data-age]'); if(!el)continue; const ms=w.lastUpdate?now-w.lastUpdate:null; el.textContent=ms==null?'—':ms<1000?Math.round(ms)+'ms ago':(ms/1000).toFixed(1)+'s ago'; el.style.color=ms!=null&&ms<2500?'var(--up)':'var(--dim)'; } },100);
+// ---------- status / latency ----------
+function setStatus(on,text){
+  document.getElementById('dot').className='dot'+(on?' on':'');
+  document.getElementById('stat').textContent=text||(on?`live · ${board.size} markets`:'offline');
+}
+setInterval(()=>{
+  const el=document.getElementById('lat');
+  if(!lastMsgAt){el.textContent='';return;}
+  const ms=Date.now()-lastMsgAt;
+  el.textContent=ms<1000?`· ${ms}ms`:`· ${(ms/1000).toFixed(1)}s`;
+  el.style.color=ms<1500?'var(--up)':'var(--dim)';
+},200);
 
-// Re-subscribe every 8s: Polymarket replies with a fresh book snapshot for
-// each market, which keeps quiet markets' prices/timestamps current (so a
-// market that simply hasn't traded still reads "fresh", not stale). Active
-// markets keep updating in real time via the push stream between these.
-setInterval(resubscribe, 8000);
+// ---------- search ----------
+document.getElementById('q').oninput=e=>{queryText=e.target.value.trim().toLowerCase();sortAndFilter();};
 
-connect();
-autoLoad();
+// ---------- boot ----------
+connectWs();
+loadList();
+setInterval(loadList, LIST_REFRESH_MS);   // refresh which games exist; prices stream via WS
 </script>
 </body>
 </html>
