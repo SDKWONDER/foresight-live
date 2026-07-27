@@ -39,7 +39,7 @@
   .chip.livef{border-color:#4a2530}
   .chip.livef.on{background:var(--live);border-color:var(--live);color:#fff}
 
-  main{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;padding:14px 16px 40px}
+  main{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(300px,100%),1fr));gap:12px;padding:14px 16px 40px}
   .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 13px;
     display:flex;flex-direction:column;min-height:0;position:relative}
   .card.crypto{border-color:#2a2f1f;background:linear-gradient(160deg,#161a10,#141924)}
@@ -79,6 +79,21 @@
   .sec-label{grid-column:1/-1;font-size:12px;color:var(--dim);font-weight:700;letter-spacing:.6px;
     text-transform:uppercase;margin:6px 2px -2px;display:flex;align-items:center;gap:8px}
   .sec-label::after{content:"";flex:1;height:1px;background:var(--line)}
+  /* ---- phone layout ---- */
+  @media (max-width:560px){
+    header{padding:8px 10px 7px}
+    h1{font-size:15px;order:1}
+    .status{order:2;margin-left:auto;font-size:11px}
+    #alBtn{order:3} #alThr{order:4}
+    .search{order:5;flex-basis:100%;min-width:0}     /* search gets its own full-width row */
+    .search input{padding:10px 12px 10px 34px}
+    .chips{margin-top:8px}
+    .chip{padding:8px 13px}                            /* bigger tap targets */
+    main{grid-template-columns:1fr;gap:10px;padding:10px 10px 48px}
+    .title{font-size:15px}
+    .pr{font-size:20px}
+    .row{padding:11px 12px}                            /* easier to read/tap */
+  }
 </style>
 </head>
 <body>
