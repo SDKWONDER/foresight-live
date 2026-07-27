@@ -95,7 +95,7 @@ const LIST_REFRESH_MS=30000;   // how often we re-scan which games exist (prices
 // and NBA/EuroLeague. Deliberately excludes minor-country soccer, tennis,
 // NFL, PUBG/Free Fire etc. to stay fast and focused. Empty tags (off-season /
 // preseason) cost one cheap request and light up automatically when games open.
-const SOCCER_TAGS=['ucl','uefa-champions-league','europa-league','uefa-europa-league','conference-league','premier-league','epl','la-liga','bundesliga','serie-a','ligue-1','mls'];
+const SOCCER_TAGS=['ucl','uefa-champions-league','europa-league','uefa-europa-league','conference-league','premier-league','epl','la-liga','bundesliga','serie-a','ligue-1'];
 const ESPORTS_TAGS=['league-of-legends','dota-2','valorant','counter-strike','cs2'];
 const HOOPS_TAGS=['nba','euroleague'];
 const BASEBALL_TAGS=['mlb'];   // MLB only — the generic 'baseball' tag drags in minor/foreign leagues
@@ -345,11 +345,19 @@ function bestMid(tokenId){
   for(const [p,s] of b.asks) if(s>0){const n=+p; if(ask===null||n<ask)ask=n;}
   return bid!=null&&ask!=null?(bid+ask)/2:(bid??ask);
 }
+// Each message is folded into book state and the affected row repainted
+// IMMEDIATELY — no rAF/timer batching. This matters because a background
+// (unfocused) tab pauses requestAnimationFrame and throttles timers, which
+// would freeze the display exactly when you're watching this while trading in
+// another window. Synchronous DOM writes keep every value current even when
+// hidden, so the moment you glance back it already shows the live number.
+// The WS socket itself is never throttled, so book state is always fresh.
+const touched=new Set();
 function onMsg(ev){
   lastMsgAt=Date.now();
   let arr; try{arr=JSON.parse(ev.data)}catch{return}
   if(!Array.isArray(arr)) arr=[arr];
-  const touched=new Set();
+  touched.clear();
   for(const e of arr){
     const id=e.asset_id; if(!id||!tokenMap.has(id)) continue;
     let bk=books.get(id); if(!bk){bk={bids:new Map(),asks:new Map()};books.set(id,bk);}
