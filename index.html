@@ -90,8 +90,17 @@
 <script>
 const GAMMA='https://gamma-api.polymarket.com';
 const WS_URL='wss://ws-subscriptions-clob.polymarket.com/ws/market';
-const LIST_REFRESH_MS=25000;   // how often we re-scan which games exist
-const MAX_EVENTS=280;          // cap for a snappy board / light WS
+const LIST_REFRESH_MS=30000;   // how often we re-scan which games exist (prices are live via WS regardless)
+// CURATED priority tags only — top soccer competitions, major esports titles,
+// and NBA/EuroLeague. Deliberately excludes minor-country soccer, tennis,
+// NFL, PUBG/Free Fire etc. to stay fast and focused. Empty tags (off-season /
+// preseason) cost one cheap request and light up automatically when games open.
+const SOCCER_TAGS=['ucl','uefa-champions-league','europa-league','uefa-europa-league','conference-league','premier-league','epl','la-liga','bundesliga','serie-a','ligue-1','mls'];
+const ESPORTS_TAGS=['league-of-legends','dota-2','valorant','counter-strike','cs2'];
+const HOOPS_TAGS=['nba','euroleague'];
+const BASEBALL_TAGS=['mlb'];   // MLB only — the generic 'baseball' tag drags in minor/foreign leagues
+const PRIORITY_TAGS=[...SOCCER_TAGS, ...ESPORTS_TAGS, ...HOOPS_TAGS, ...BASEBALL_TAGS];
+const MAX_PAGES=5;             // per-tag pagination depth (100 events/page)
 
 // ---------- categories ----------
 const CATS=[
@@ -126,10 +135,11 @@ function jparse(s,d){try{return JSON.parse(s)}catch{return d}}
 function cleanLabel(s){return (s||'').replace(/\s*\(.*\)\s*$/,'').trim();}
 
 // ---------- fetching the market list ----------
-async function fetchSports(){
+// Fetch every page of one tag (deep enough to include all of that sport).
+async function fetchTagAll(tag, maxPages=MAX_PAGES){
   const out=[];
-  for(let off=0; off<MAX_EVENTS; off+=100){
-    const evs=await fetch(`${GAMMA}/events?tag_slug=sports&active=true&closed=false&limit=100&offset=${off}&order=volume24hr&ascending=false`).then(r=>r.ok?r.json():[]).catch(()=>[]);
+  for(let off=0; off<maxPages*100; off+=100){
+    const evs=await fetch(`${GAMMA}/events?tag_slug=${tag}&active=true&closed=false&limit=100&offset=${off}&order=volume24hr&ascending=false`).then(r=>r.ok?r.json():[]).catch(()=>[]);
     if(!Array.isArray(evs)||!evs.length) break;
     out.push(...evs);
     if(evs.length<100) break;
@@ -176,20 +186,26 @@ async function fetchCrypto(){
   return cards;
 }
 
+function makeItem(e){
+  const outs=extractSport(e); if(!outs) return null;
+  const now=Date.now();
+  const startMs=Date.parse(e.startDate)||0, endMs=Date.parse(e.endDate)||0;
+  return {id:'e_'+e.id, cat:categorize((e.tags||[]).map(t=>t.slug)), title:e.title,
+    startMs, endMs, vol:+e.volume24hr||0, outcomes:outs,
+    live: startMs && startMs<=now && (!endMs||endMs>now)};
+}
+
 async function loadList(){
   try{
-    const [sportsEvs, cryptoCards]=await Promise.all([fetchSports(), fetchCrypto()]);
-    const now=Date.now();
-    const items=[...cryptoCards];
-    for(const e of sportsEvs){
-      const outs=extractSport(e); if(!outs) continue;
-      const tagSlugs=(e.tags||[]).map(t=>t.slug);
-      const startMs=Date.parse(e.startDate)||0, endMs=Date.parse(e.endDate)||0;
-      items.push({id:'e_'+e.id, cat:categorize(tagSlugs), title:e.title,
-        startMs, endMs, vol:+e.volume24hr||0, outcomes:outs,
-        live: startMs && startMs<=now && (!endMs||endMs>now)});
+    const items=await fetchCrypto();
+    const seen=new Set();
+    // Curated priority tags only, fetched in full and deduped across overlaps
+    // (e.g. ucl & uefa-champions-league, nba & euroleague, mlb & baseball).
+    const batches=await Promise.all(PRIORITY_TAGS.map(t=>fetchTagAll(t)));
+    for(const evs of batches) for(const e of evs){
+      if(seen.has(e.id)) continue; const it=makeItem(e); if(!it) continue;
+      seen.add(e.id); items.push(it);
     }
-    if(items.length>MAX_EVENTS+8) items.length=MAX_EVENTS+8;
     reconcile(items);
     setStatus(ws&&ws.readyState===1);
   }catch(e){ setStatus(false,'list error'); }
