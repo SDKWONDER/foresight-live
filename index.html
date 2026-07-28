@@ -124,6 +124,7 @@ const SOCCER_TAGS=['ucl','uefa-champions-league','europa-league','uefa-europa-le
 const ESPORTS_TAGS=['league-of-legends','dota-2','valorant','counter-strike','cs2'];
 const HOOPS_TAGS=['nba','euroleague'];
 const BASEBALL_TAGS=['mlb'];   // MLB only — the generic 'baseball' tag drags in minor/foreign leagues
+const TENNIS_CAP=40;           // top-volume tennis only (ATP/WTA tour), keeps the board light
 const PRIORITY_TAGS=[...SOCCER_TAGS, ...ESPORTS_TAGS, ...HOOPS_TAGS, ...BASEBALL_TAGS];
 const MAX_PAGES=5;             // per-tag pagination depth (100 events/page)
 
@@ -153,7 +154,8 @@ function categorize(tagSlugs){
 const board=new Map();   // eventId -> {el, cat, live, startMs, vol, searchText, outcomes:[{tokenId,label,prob,prev,prEl,rowEl}]}
 const tokenMap=new Map();// tokenId -> {eventId, idx}
 const books=new Map();   // tokenId -> {bids:Map, asks:Map}
-let ws=null, reconnectT=null, lastMsgAt=0;
+let sockets=[], rebuildT=null, subIds=new Set(), lastMsgAt=0;
+const WS_GROUP=400;            // max asset_ids per socket (one message stays under the drop limit)
 let activeCat='all', queryText='', liveOnly=false;
 // price-jump alerts
 let alertsOn=true, alertThr=3;
@@ -234,8 +236,21 @@ async function loadList(){
       if(seen.has(e.id)) continue; const it=makeItem(e); if(!it) continue;
       seen.add(e.id); items.push(it);
     }
+    // Tennis (ATP / pro tour). Polymarket doesn't tag ATP vs WTA per match, so
+    // we take the tennis tag ordered by volume, drop the low-tier ITF/satellite
+    // circuit, and keep only the top TENNIS_CAP — the highest-volume matches are
+    // the ATP/WTA tour marquee ones. Keeps it ATP-focused and light.
+    const tennisEvs=await fetchTagAll('tennis', 3);
+    let tn=0;
+    for(const e of tennisEvs){
+      if(tn>=TENNIS_CAP) break;
+      if(seen.has(e.id)) continue;
+      if(/\bITF\b|\b[MW](?:15|25|35)\b/i.test(e.title)) continue; // skip satellite circuit
+      const it=makeItem(e); if(!it) continue;
+      seen.add(e.id); items.push(it); tn++;
+    }
     reconcile(items);
-    setStatus(ws&&ws.readyState===1);
+    setStatus(wsHealthy());
   }catch(e){ setStatus(false,'list error'); }
 }
 
@@ -401,18 +416,36 @@ function beep(up){
 const BASE_TITLE='Polymarket Live ⚡'; let titleT=null;
 function flashTitle(txt){ document.title='⚡ '+txt; clearTimeout(titleT); titleT=setTimeout(()=>{document.title=BASE_TITLE;},3000); }
 
-// ---------- websocket: the millisecond channel ----------
-function connectWs(){
-  ws=new WebSocket(WS_URL);
-  ws.onopen=()=>{ setStatus(true); resubscribe(); };
-  ws.onclose=()=>{ setStatus(false,'reconnecting…'); clearTimeout(reconnectT); reconnectT=setTimeout(connectWs,1200); };
-  ws.onerror=()=>{ try{ws.close()}catch{} };
-  ws.onmessage=onMsg;
-}
-function resubscribe(){
-  if(!ws||ws.readyState!==1) return;
+// ---------- websocket pool: the millisecond channel ----------
+// One CLOB socket silently drops a subscribe message past ~600 asset_ids, and a
+// second message REPLACES the first (it doesn't accumulate). So to watch more
+// markets than that we open a POOL of sockets, each subscribing up to WS_GROUP
+// ids. They share one onMsg handler (routing is global via tokenMap), so more
+// sockets add capacity without adding latency.
+function wsHealthy(){ return sockets.some(s=>s.readyState===1); }
+function connectAll(){
+  for(const s of sockets){ try{ s.onclose=null; s.onerror=null; s.onmessage=null; s.close(); }catch{} }
+  sockets=[];
   const ids=[...tokenMap.keys()];
-  if(ids.length) ws.send(JSON.stringify({assets_ids:ids, type:'market'}));
+  const groups=[];
+  for(let i=0;i<ids.length;i+=WS_GROUP) groups.push(ids.slice(i,i+WS_GROUP));
+  if(!groups.length) groups.push([]);
+  for(const grp of groups){
+    const s=new WebSocket(WS_URL);
+    s.onopen=()=>{ setStatus(true); if(grp.length) s.send(JSON.stringify({assets_ids:grp, type:'market'})); };
+    s.onmessage=onMsg;
+    s.onerror=()=>{ try{s.close()}catch{} };
+    s.onclose=()=>{ setStatus(false,'reconnecting…'); clearTimeout(rebuildT); rebuildT=setTimeout(connectAll,1200); };
+    sockets.push(s);
+  }
+}
+// Called after each list refresh — only rebuilds the pool if the token set
+// actually changed (or nothing's connected), so steady state doesn't churn.
+function resubscribe(){
+  const cur=new Set(tokenMap.keys());
+  let same=cur.size===subIds.size; if(same) for(const id of cur){ if(!subIds.has(id)){ same=false; break; } }
+  if(same && wsHealthy()) return;
+  subIds=cur; connectAll();
 }
 function bestMid(tokenId){
   const b=books.get(tokenId); if(!b) return null;
@@ -482,7 +515,7 @@ alThr.onclick=()=>{ alertThr=THRS[(THRS.indexOf(alertThr)+1)%THRS.length]; paint
 paintAlertUi();
 
 // ---------- boot ----------
-connectWs();
+connectAll();
 loadList();
 setInterval(loadList, LIST_REFRESH_MS);   // refresh which games exist; prices stream via WS
 </script>
