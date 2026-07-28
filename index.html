@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#0a0d13" />
 <title>Polymarket Live ⚡</title>
 <style>
   :root{
@@ -10,8 +11,8 @@
     --txt:#e8eef6; --dim:#8a97a9; --up:#2ee6a0; --down:#ff5c7a;
     --accent:#7aa2ff; --live:#ff4d4d; --gold:#ffcf5c;
   }
-  *{box-sizing:border-box}
-  html,body{overflow-x:hidden}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{overflow-x:hidden;-webkit-overflow-scrolling:touch}
   body{margin:0;background:var(--bg);color:var(--txt);
     font:15px/1.4 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
   header{position:sticky;top:0;z-index:20;background:linear-gradient(180deg,#0a0d13 70%,rgba(10,13,19,.9));
@@ -106,7 +107,7 @@
     <h1><span class="z">⚡</span> Polymarket Live</h1>
     <div class="search">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
-      <input id="q" placeholder="Search team, player, market…" autocomplete="off" spellcheck="false"/>
+      <input id="q" type="search" enterkeyhint="search" autocapitalize="none" placeholder="Search team, player, market…" autocomplete="off" spellcheck="false"/>
     </div>
     <div class="status"><span class="dot" id="dot"></span><span id="stat">connecting…</span><span class="lat" id="lat"></span></div>
     <span class="chip abtn on" id="alBtn" title="Beep + flash on fast price jumps">🔔 Alerts</span>
@@ -200,8 +201,9 @@ function extractSport(ev){
   return outs;
 }
 async function fetchCrypto(){
-  const now=Date.now(), cards=[];
-  for(const [asset,tag] of [['BTC','bitcoin'],['ETH','ethereum']]){
+  const now=Date.now();
+  // BTC and ETH fetched in parallel (not one after the other) for a faster boot.
+  const per=async(asset,tag)=>{
     const evs=await fetch(`${GAMMA}/events?tag_slug=${tag}&active=true&closed=false&limit=40&order=liquidity&ascending=false`).then(r=>r.ok?r.json():[]).catch(()=>[]);
     // Up/Down are short recurring windows. Keep only ones whose window hasn't
     // ended yet (drops stale never-closed leftovers pinned at 0/100), then pick
@@ -209,16 +211,16 @@ async function fetchCrypto(){
     const ud=(Array.isArray(evs)?evs:[]).filter(e=>/up or down/i.test(e.title)&&e.markets?.[0]?.acceptingOrders!==false&&e.markets?.[0]?.clobTokenIds&&(Date.parse(e.endDate)||0)>now)
       .sort((a,b)=>(Date.parse(a.endDate)||0)-(Date.parse(b.endDate)||0));
     const e=ud.find(x=>(Date.parse(x.startDate)||0)<=now)||ud[0];
-    if(!e) continue;
+    if(!e) return null;
     const m=e.markets[0], names=jparse(m.outcomes,[]), toks=jparse(m.clobTokenIds,[]), pr=jparse(m.outcomePrices,[]);
     const outs=names.map((o,i)=>({label:o,tokenId:toks[i],prob:pr[i]!=null?+pr[i]:null})).filter(o=>o.tokenId);
-    if(outs.length!==2) continue;
+    if(outs.length!==2) return null;
     const startMs=Date.parse(e.startDate)||0, endMs=Date.parse(e.endDate)||0;
-    cards.push({id:'c_'+asset, cat:'crypto', title:`${asset} · ${e.title.replace(/^.*?Up or Down\s*-?\s*/i,'Up or Down · ')}`,
+    return {id:'c_'+asset, cat:'crypto', title:`${asset} · ${e.title.replace(/^.*?Up or Down\s*-?\s*/i,'Up or Down · ')}`,
       startMs, endMs, vol:+e.liquidity||0, outcomes:outs, crypto:true, asset,
-      live: startMs<=now && (!endMs||endMs>now)});
-  }
-  return cards;
+      live: startMs<=now && (!endMs||endMs>now)};
+  };
+  return (await Promise.all([['BTC','bitcoin'],['ETH','ethereum']].map(([a,t])=>per(a,t)))).filter(Boolean);
 }
 
 // `startTime` (ISO) is the real kickoff and is present on essentially every
@@ -234,20 +236,22 @@ function makeItem(e){
 
 async function loadList(){
   try{
-    const items=await fetchCrypto();
+    // Crypto, every priority tag, and tennis all fetched in ONE parallel wave —
+    // the board's first paint is bounded by the single slowest request, not the
+    // sum of three sequential stages.
+    const [cryptoCards, priorityBatches, tennisEvs] = await Promise.all([
+      fetchCrypto(),
+      Promise.all(PRIORITY_TAGS.map(t=>fetchTagAll(t))),
+      fetchTagAll('tennis', 3),
+    ]);
+    const items=[...cryptoCards];
     const seen=new Set();
-    // Curated priority tags only, fetched in full and deduped across overlaps
-    // (e.g. ucl & uefa-champions-league, nba & euroleague, mlb & baseball).
-    const batches=await Promise.all(PRIORITY_TAGS.map(t=>fetchTagAll(t)));
-    for(const evs of batches) for(const e of evs){
+    // Priority tags, deduped across overlaps (ucl & uefa-champions-league, etc.).
+    for(const evs of priorityBatches) for(const e of evs){
       if(seen.has(e.id)) continue; const it=makeItem(e); if(!it) continue;
       seen.add(e.id); items.push(it);
     }
-    // Tennis (ATP / pro tour). Polymarket doesn't tag ATP vs WTA per match, so
-    // we take the tennis tag ordered by volume, drop the low-tier ITF/satellite
-    // circuit, and keep only the top TENNIS_CAP — the highest-volume matches are
-    // the ATP/WTA tour marquee ones. Keeps it ATP-focused and light.
-    const tennisEvs=await fetchTagAll('tennis', 3);
+    // Tennis (ATP / pro tour), top TENNIS_CAP by volume, ITF satellites dropped.
     let tn=0;
     for(const e of tennisEvs){
       if(tn>=TENNIS_CAP) break;
