@@ -126,7 +126,7 @@ const LIST_REFRESH_MS=30000;   // how often we re-scan which games exist (prices
 // preseason) cost one cheap request and light up automatically when games open.
 const SOCCER_TAGS=['ucl','uefa-champions-league','europa-league','uefa-europa-league','conference-league','premier-league','epl','la-liga','bundesliga','serie-a','ligue-1'];
 const ESPORTS_TAGS=['league-of-legends','dota-2','valorant','counter-strike','cs2'];
-const HOOPS_TAGS=['nba','euroleague'];
+const HOOPS_TAGS=['nba','wnba','euroleague'];
 const BASEBALL_TAGS=['mlb'];   // MLB only — the generic 'baseball' tag drags in minor/foreign leagues
 const TENNIS_CAP=90;           // top-volume tennis (ATP/WTA tour); Live-only mode + WS pool keep it fast
 const PRIORITY_TAGS=[...SOCCER_TAGS, ...ESPORTS_TAGS, ...HOOPS_TAGS, ...BASEBALL_TAGS];
@@ -221,13 +221,13 @@ async function fetchCrypto(){
   return cards;
 }
 
-// gameStartTime is the real kickoff ("2026-07-28 08:00:00+00"); startDate is
-// just when the market opened, so it's useless for "starts in". `live` is
-// Polymarket's own in-play flag — the source of truth for Live-only mode.
+// `startTime` (ISO) is the real kickoff and is present on essentially every
+// match; gameStartTime is sparse and startDate is just market-open (useless for
+// "starts in"). `live` is Polymarket's own in-play flag — truth for Live mode.
 function parseWhen(s){ if(!s) return 0; let t=Date.parse(s); if(isNaN(t)) t=Date.parse(String(s).replace(' ','T').replace(/\+00$/,'+00:00')); return isNaN(t)?0:t; }
 function makeItem(e){
   const outs=extractSport(e); if(!outs) return null;
-  const startMs=parseWhen(e.gameStartTime)||parseWhen(e.startDate), endMs=parseWhen(e.endDate);
+  const startMs=parseWhen(e.startTime)||parseWhen(e.gameStartTime)||parseWhen(e.startDate), endMs=parseWhen(e.endDate);
   return {id:'e_'+e.id, cat:categorize((e.tags||[]).map(t=>t.slug)), title:e.title,
     startMs, endMs, vol:+e.volume24hr||0, outcomes:outs, live: e.live===true};
 }
@@ -262,11 +262,16 @@ async function loadList(){
   }catch(e){ setStatus(false,'list error'); }
 }
 
-// Live-only mode renders + subscribes ONLY in-play games (+ crypto) — far fewer
-// cards and WS tokens, so it's genuinely fast, not just visually filtered.
-// Default mode shows everything incl. upcoming so you can see what's coming.
+// Live mode renders + subscribes ONLY in-play games, crypto, and games kicking
+// off within SOON_MS (so you can pre-position before they go live) — far fewer
+// cards/tokens, so it's genuinely fast. Default mode shows everything.
+// Note: "starting soon" needs a real kickoff time (gameStartTime), which esports
+// have but soccer/baseball don't — those only appear once Polymarket flags them
+// live. Default (all) mode still lists them so nothing is hidden.
+const SOON_MS=60*60*1000;
+function isSoon(it){ return !it.live && it.startMs>Date.now() && it.startMs-Date.now()<=SOON_MS; }
 function applyMode(){
-  reconcile(liveOnly ? allItems.filter(it=>it.live||it.crypto) : allItems);
+  reconcile(liveOnly ? allItems.filter(it=>it.live||it.crypto||isSoon(it)) : allItems);
 }
 
 // ---------- DOM reconcile ----------
@@ -356,7 +361,7 @@ function sortAndFilter(){
   let e=boardEl.querySelector('.empty');
   if(!shown){ if(!e){e=document.createElement('div');e.className='empty';boardEl.appendChild(e);}
     e.innerHTML=liveOnly
-      ? `No games in play right now. Tap <b>🔴 Live only</b> to switch it off and see upcoming games.`
+      ? `No games in play or starting within the hour. Tap <b>🔴 Live + soon</b> to switch it off and browse all games.`
       : `No markets match <b>${queryText||CAT_LABEL[activeCat]||''}</b>.`; }
   else if(e) e.remove();
 }
@@ -365,7 +370,7 @@ function renderChips(){
   const counts={all:0}; for(const c of board.values()){ counts.all++; counts[c.cat]=(counts[c.cat]||0)+1; }
   const el=document.getElementById('chips');
   const cats=[['all','All'],...CATS.map(c=>[c.key,c.label]).filter(([k])=>counts[k])];
-  el.innerHTML=`<span class="chip livef${liveOnly?' on':''}" data-live="1">🔴 Live only</span>`+
+  el.innerHTML=`<span class="chip livef${liveOnly?' on':''}" data-live="1">🔴 Live + soon</span>`+
     cats.map(([k,l])=>`<span class="chip${activeCat===k?' on':''}" data-cat="${k}">${l}<span class="n">${counts[k]||0}</span></span>`).join('');
   el.querySelectorAll('[data-cat]').forEach(ch=>ch.onclick=()=>{activeCat=ch.dataset.cat;sortAndFilter();});
   // Live-only is a real MODE (changes what's loaded/subscribed), so re-run applyMode, not just the display filter.
