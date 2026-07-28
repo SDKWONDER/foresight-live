@@ -41,7 +41,11 @@
 
   main{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(300px,100%),1fr));gap:12px;padding:14px 16px 40px}
   .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 13px;
-    display:flex;flex-direction:column;min-height:0;position:relative}
+    display:flex;flex-direction:column;min-height:0;position:relative;
+    /* Skip rendering/layout of off-screen cards — the board draws & scrolls as
+       fast as a handful of cards no matter how many exist. Live data still
+       updates in the DOM; a card just paints when scrolled into view. */
+    content-visibility:auto;contain-intrinsic-size:auto 150px}
   .card.crypto{border-color:#2a2f1f;background:linear-gradient(160deg,#161a10,#141924)}
   .card.alert{animation:cardAlert 1.7s ease-out}
   @keyframes cardAlert{0%{border-color:var(--gold);box-shadow:0 0 0 2px rgba(255,207,92,.55),0 0 22px rgba(255,207,92,.35)}100%{box-shadow:none}}
